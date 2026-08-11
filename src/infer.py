@@ -97,11 +97,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run restoration inference on a directory of test images.")
     parser.add_argument("--input_dir", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--checkpoint", type=str, default="../outputs/model_nafnet_my_run.pt",
+                        help="Defaults to the final submitted NAFNet checkpoint")
     parser.add_argument("--model_variant", type=str, default="nafnet",
                         choices=["nafnet", "nafnet_v2", "nafnet_large", "baseline", "noise_aware", "unet"])
     parser.add_argument("--tta", action="store_true")
-    parser.add_argument("--width", type=int, default=32, help="NAFNet width (must match training)")
+    parser.add_argument("--width", type=int, default=48, help="NAFNet width (must match training)")
     parser.add_argument("--num_res_blocks", type=int, default=8, help="Must match how the checkpoint was trained")
     parser.add_argument("--base_channels", type=int, default=64, help="Must match how the checkpoint was trained")
     args = parser.parse_args()
