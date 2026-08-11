@@ -26,3 +26,44 @@ Resume requested but no train-state file found; warm-started weights from ../out
 Epoch   1/20 | train: 0.0845 | val: 0.0847 | lr: 0.000100
   -> best saved (val=0.0847)
 Epoch   2/20 | train: 0.0845 | val: 0.0848 | lr: 0.000100
+Epoch   3/20 | train: 0.0844 | val: 0.0845 | lr: 0.000099
+  -> best saved (val=0.0845)
+Using device: cuda
+Train pairs: 2880 | Val pairs: 320
+Resume: kept existing held-out split at ../outputs\val_filenames.txt
+Model: nafnet | width=48 | Parameters: 15,855,649
+Augmentation: True
+Resume requested but no train-state file found; warm-started weights from ../outputs/model_nafnet_my_run.pt (optimizer/scheduler restart at epoch 1, measured val=0.0735 — only an improvement on this will overwrite the checkpoint)
+Epoch   1/20 | train: 0.0731 | val: 0.0734 | lr: 0.000100
+  -> best saved (val=0.0734)
+Epoch   2/20 | train: 0.0732 | val: 0.0735 | lr: 0.000100
+Epoch   3/20 | train: 0.0730 | val: 0.0733 | lr: 0.000099
+  -> best saved (val=0.0733)
+Epoch   4/20 | train: 0.0730 | val: 0.0734 | lr: 0.000097
+Epoch   5/20 | train: 0.0729 | val: 0.0734 | lr: 0.000093
+Epoch   6/20 | train: 0.0729 | val: 0.0731 | lr: 0.000088
+  -> best saved (val=0.0731)
+Epoch   7/20 | train: 0.0727 | val: 0.0730 | lr: 0.000082
+  -> best saved (val=0.0730)
+Epoch   8/20 | train: 0.0726 | val: 0.0731 | lr: 0.000075
+Epoch   9/20 | train: 0.0725 | val: 0.0730 | lr: 0.000067
+Epoch  10/20 | train: 0.0724 | val: 0.0730 | lr: 0.000059
+Epoch  11/20 | train: 0.0724 | val: 0.0729 | lr: 0.000050
+  -> best saved (val=0.0729)
+Epoch  12/20 | train: 0.0723 | val: 0.0728 | lr: 0.000041
+  -> best saved (val=0.0728)
+Epoch  13/20 | train: 0.0722 | val: 0.0727 | lr: 0.000033
+  -> best saved (val=0.0727)
+Epoch  14/20 | train: 0.0721 | val: 0.0727 | lr: 0.000025
+  -> best saved (val=0.0727)
+Epoch  15/20 | train: 0.0720 | val: 0.0727 | lr: 0.000018
+Epoch  16/20 | train: 0.0720 | val: 0.0727 | lr: 0.000012
+  -> best saved (val=0.0727)
+Epoch  17/20 | train: 0.0719 | val: 0.0727 | lr: 0.000007
+  -> best saved (val=0.0727)
+Epoch  18/20 | train: 0.0719 | val: 0.0727 | lr: 0.000003
+  -> best saved (val=0.0727)
+Epoch  19/20 | train: 0.0719 | val: 0.0726 | lr: 0.000001
+  -> best saved (val=0.0726)
+Epoch  20/20 | train: 0.0719 | val: 0.0726 | lr: 0.000000
+  -> best saved (val=0.0726)

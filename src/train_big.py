@@ -18,7 +18,10 @@ from torch.utils.data import DataLoader, Subset
 from pytorch_msssim import ssim
 
 from dataset import RestorationDataset
-from model import RestorationNet, NoiseAwareRestorationNet, UNetRestorationNet, NAFNetRestorer
+from model import (
+    RestorationNet, NoiseAwareRestorationNet, UNetRestorationNet,
+    NAFNetRestorer, NAFNetRestorerV2,
+)
 
 
 # ── Loss functions ─────────────────────────────────────────────────────────────
@@ -34,12 +37,30 @@ def frequency_loss(pred, target):
     return F.l1_loss(torch.abs(pred_f), torch.abs(target_f))
 
 
-def combined_loss(pred, target, char_w=0.5, ssim_w=0.3, freq_w=0.2):
+def combined_loss(pred, target, char_w=0.4, ssim_w=0.25, freq_w=0.35):
     pred_c = torch.clamp(pred, 0, 1)
     char   = charbonnier_loss(pred_c, target)
     ssim_l = 1.0 - ssim(pred_c, target, data_range=1.0, size_average=True)
     freq   = frequency_loss(pred_c, target)
     return char_w * char + ssim_w * ssim_l + freq_w * freq
+
+
+def deep_supervision_loss(aux_outputs, target, weight=0.1):
+    """
+    Charbonnier loss between each decoder-stage aux head and the ground
+    truth downsampled to that stage's resolution. Gives early decoder
+    layers a direct gradient instead of only what backprops through the
+    final tail, at a small weight so it nudges training without
+    dominating the main full-resolution loss.
+    """
+    if not aux_outputs:
+        return 0.0
+    loss = 0.0
+    for aux in aux_outputs:
+        aux_c = torch.clamp(aux, 0, 1)
+        target_ds = F.interpolate(target, size=aux_c.shape[-2:], mode="bilinear", align_corners=False)
+        loss = loss + charbonnier_loss(aux_c, target_ds)
+    return weight * loss / len(aux_outputs)
 
 
 # ── Training loop ──────────────────────────────────────────────────────────────
@@ -116,6 +137,13 @@ def train(
             middle_blks=12,
             dec_blks=(4, 2, 2),
         ).to(device)
+    elif model_variant == "nafnet_v2":
+        model = NAFNetRestorerV2(
+            width=width,
+            enc_blks=(2, 2, 4),
+            middle_blks=12,
+            dec_blks=(4, 2, 2),
+        ).to(device)
     elif model_variant == "nafnet_large":
         model = NAFNetRestorer(
             width=64,
@@ -133,6 +161,8 @@ def train(
     num_params = sum(p.numel() for p in model.parameters())
     log(f"Model: {model_variant} | width={width} | Parameters: {num_params:,}")
     log(f"Augmentation: {use_augmentation}")
+
+    use_deep_supervision = model_variant == "nafnet_v2"
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
@@ -180,8 +210,12 @@ def train(
         for batch_idx, (noisy, gt) in enumerate(train_loader):
             noisy, gt = noisy.to(device), gt.to(device)
             optimizer.zero_grad()
-            pred = model(noisy)
-            loss = combined_loss(pred, gt)
+            if use_deep_supervision:
+                pred, aux_outputs = model(noisy, return_aux=True)
+                loss = combined_loss(pred, gt) + deep_supervision_loss(aux_outputs, gt)
+            else:
+                pred = model(noisy)
+                loss = combined_loss(pred, gt)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()

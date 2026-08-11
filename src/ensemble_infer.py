@@ -35,8 +35,9 @@ def load_one_model(checkpoint_path, device, model_variant, num_res_blocks, base_
     return model
 
 
-# Edit this list to match your actual checkpoint filenames.
-# "weight" controls how much influence each model has in the final average.
+# Checkpoint filenames match the trained weights committed under outputs/ — no
+# edits needed to run this script. "weight" controls how much influence each
+# model has in the final average.
 ENSEMBLE_MEMBERS = [
     {"checkpoint": "../outputs/model_noise_aware_LOCAL_v1.pt", "variant": "noise_aware", "num_res_blocks": 8, "base_channels": 64, "weight": 1.2},
     {"checkpoint": "../outputs/model_unet_UNET_v1.pt", "variant": "unet", "num_res_blocks": 8, "base_channels": 48, "weight": 1.0},

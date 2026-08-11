@@ -10,12 +10,17 @@ import time
 import numpy as np
 import torch
 
-from model import RestorationNet, NoiseAwareRestorationNet, UNetRestorationNet, NAFNetRestorer
+from model import (
+    RestorationNet, NoiseAwareRestorationNet, UNetRestorationNet,
+    NAFNetRestorer, NAFNetRestorerV2,
+)
 
 
 def load_model(checkpoint_path, device, model_variant="nafnet", num_res_blocks=8, base_channels=64, width=32):
     if model_variant == "nafnet":
-        model = NAFNetRestorer(width=width)
+        model = NAFNetRestorer(width=width, enc_blks=(2, 2, 4), middle_blks=12, dec_blks=(4, 2, 2))
+    elif model_variant == "nafnet_v2":
+        model = NAFNetRestorerV2(width=width)
     elif model_variant == "nafnet_large":
         model = NAFNetRestorer(width=64, enc_blks=(2, 2, 4, 8), middle_blks=16, dec_blks=(8, 4, 2, 2))
     elif model_variant == "unet":
@@ -94,7 +99,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, required=True)
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--model_variant", type=str, default="nafnet",
-                        choices=["nafnet", "nafnet_large", "baseline", "noise_aware", "unet"])
+                        choices=["nafnet", "nafnet_v2", "nafnet_large", "baseline", "noise_aware", "unet"])
     parser.add_argument("--tta", action="store_true")
     parser.add_argument("--width", type=int, default=32, help="NAFNet width (must match training)")
     parser.add_argument("--num_res_blocks", type=int, default=8, help="Must match how the checkpoint was trained")

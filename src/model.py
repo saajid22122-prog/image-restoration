@@ -90,6 +90,64 @@ class NAFBlock(nn.Module):
         return y + x * self.gamma
 
 
+# ── V2 components: transformer bottleneck for long-range context ───────────────
+
+class MDTA(nn.Module):
+    """
+    Multi-Dconv Head Transposed Attention (Restormer, Zamir et al., CVPR 2022).
+
+    Attention is computed over the channel dimension instead of the spatial
+    dimension, so cost is O(C^2) not O((HW)^2) -- independent of resolution.
+    This gives every pixel a global receptive field (useful for periodic /
+    repeating structure like wafer patterns or ripples spanning the frame)
+    at a cost cheap enough to use inside the network, not just at the
+    lowest-resolution bottleneck.
+    """
+    def __init__(self, c, num_heads=4):
+        super().__init__()
+        self.num_heads = num_heads
+        self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
+        self.qkv = nn.Conv2d(c, c * 3, 1)
+        self.qkv_dw = nn.Conv2d(c * 3, c * 3, 3, padding=1, groups=c * 3)
+        self.proj = nn.Conv2d(c, c, 1)
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+        q, k, v = self.qkv_dw(self.qkv(x)).chunk(3, dim=1)
+
+        def split_heads(t):
+            return t.reshape(b, self.num_heads, c // self.num_heads, h * w)
+
+        q, k, v = split_heads(q), split_heads(k), split_heads(v)
+        q = F.normalize(q, dim=-1)
+        k = F.normalize(k, dim=-1)
+        attn = (q @ k.transpose(-2, -1)) * self.temperature
+        attn = attn.softmax(dim=-1)
+        out = (attn @ v).reshape(b, c, h, w)
+        return self.proj(out)
+
+
+class TransformerBlock(nn.Module):
+    """MDTA + NAFBlock-style gated FFN, pre-norm, learnable residual scales."""
+    def __init__(self, c, num_heads=4, ffn_expand=2):
+        super().__init__()
+        self.norm1 = LayerNorm2d(c)
+        self.attn  = MDTA(c, num_heads=num_heads)
+        self.beta  = nn.Parameter(torch.ones(1, c, 1, 1))
+
+        self.norm2 = LayerNorm2d(c)
+        ff = c * ffn_expand
+        self.ff1   = nn.Conv2d(c, ff, 1)
+        self.sg    = SimpleGate()
+        self.ff2   = nn.Conv2d(ff // 2, c, 1)
+        self.gamma = nn.Parameter(torch.ones(1, c, 1, 1))
+
+    def forward(self, x):
+        x = x + self.attn(self.norm1(x)) * self.beta
+        y = self.ff2(self.sg(self.ff1(self.norm2(x))))
+        return x + y * self.gamma
+
+
 # ── Primary model ──────────────────────────────────────────────────────────────
 
 class NAFNetRestorer(nn.Module):
@@ -170,6 +228,105 @@ class NAFNetRestorer(nn.Module):
 
         x = self.sr_up(x)
         return self.tail(x)
+
+
+class NAFNetRestorerV2(nn.Module):
+    """
+    NAFNetRestorer + three additions aimed at closing the remaining fidelity
+    gap, all still pure learned components (no classical denoising/filtering
+    step anywhere in the path):
+
+      1. Global residual: the network adds its output on top of a bicubic
+         upsample of the input rather than predicting the image from
+         scratch. This is the standard residual-learning convention used
+         in super-resolution nets (EDSR, RCAN) -- bicubic interpolation
+         supplies no restoration on its own (it doesn't remove noise), it
+         just gives the network an identity starting point so its limited
+         capacity is spent on the noise-removal / detail-recovery residual
+         instead of relearning large-scale structure it already has for free.
+      2. Transformer bottleneck: TransformerBlock (MDTA channel attention)
+         replaces NAFBlock at the lowest-resolution stage, giving the
+         network a global receptive field there for long-range / periodic
+         structure that local convolutions can't see.
+      3. Deep supervision taps: each decoder stage exposes a 1-channel aux
+         prediction so a loss can be applied at every scale during training,
+         improving gradient flow to early layers. Call forward(x,
+         return_aux=True) during training; plain forward(x) at inference
+         ignores them.
+
+    Not backward-compatible with NAFNetRestorer checkpoints -- train fresh.
+    """
+    def __init__(
+        self,
+        width=48,
+        enc_blks=(2, 2, 4),
+        middle_blks=12,
+        dec_blks=(4, 2, 2),
+        num_heads=4,
+    ):
+        super().__init__()
+
+        self.head = nn.Conv2d(2, width, 3, padding=1)
+
+        self.encoders = nn.ModuleList()
+        self.downs = nn.ModuleList()
+        ch = width
+        for n in enc_blks:
+            self.encoders.append(nn.Sequential(*[NAFBlock(ch) for _ in range(n)]))
+            self.downs.append(nn.Conv2d(ch, ch * 2, 2, stride=2))
+            ch *= 2
+
+        self.middle = nn.Sequential(
+            *[TransformerBlock(ch, num_heads=num_heads) for _ in range(middle_blks)]
+        )
+
+        self.ups = nn.ModuleList()
+        self.decoders = nn.ModuleList()
+        self.aux_heads = nn.ModuleList()
+        for n in dec_blks:
+            self.ups.append(nn.Sequential(
+                nn.Conv2d(ch, ch * 2, 1),
+                nn.PixelShuffle(2),
+            ))
+            ch //= 2
+            self.decoders.append(nn.Sequential(*[NAFBlock(ch) for _ in range(n)]))
+            self.aux_heads.append(nn.Conv2d(ch, 1, 3, padding=1))
+
+        self.sr_up = nn.Sequential(
+            nn.Conv2d(ch, ch * 4, 3, padding=1),
+            nn.PixelShuffle(2),
+        )
+        self.tail = nn.Conv2d(ch, 1, 3, padding=1)
+
+    def forward(self, x_raw, return_aux=False):
+        base = F.interpolate(x_raw.clamp(0, 1), scale_factor=2, mode="bicubic", align_corners=False)
+
+        evidence = compute_noise_evidence_map(x_raw)
+        x = torch.cat([x_raw.clamp(0, 1), evidence], dim=1)
+        x = self.head(x)
+
+        skips = []
+        for enc, down in zip(self.encoders, self.downs):
+            x = enc(x)
+            skips.append(x)
+            x = down(x)
+
+        x = self.middle(x)
+
+        aux_outputs = []
+        for dec, up, skip, aux_head in zip(self.decoders, self.ups, skips[::-1], self.aux_heads):
+            x = up(x)
+            x = x + skip
+            x = dec(x)
+            if return_aux:
+                aux_outputs.append(aux_head(x))
+
+        x = self.sr_up(x)
+        out = self.tail(x) + base
+
+        if return_aux:
+            return out, aux_outputs
+        return out
 
 
 # ── Legacy models (kept for backward-compat with existing checkpoints) ─────────
