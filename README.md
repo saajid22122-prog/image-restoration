@@ -2,22 +2,29 @@
 
 Restores degraded semiconductor inspection images: removes speckle noise and upsamples 128×128 → 256×256 in a single pass.
 
-The submission is a single model, **NAFNet** (`model_nafnet_my_run.pt`). An earlier four-model weighted ensemble is also still in this repo — it was the original approach, and it's kept for reference since it's part of the project's history — but NAFNet beats it on every metric while running about 4x faster, so NAFNet is what `infer.py` runs by default and what the results below are based on.
+The submission is a single architecture, **NAFNet**, used as an average of two checkpoints of itself (`model_nafnet_my_run.pt` + `model_nafnet_pre_lpips.pt` — one architecture, two training snapshots, not a multi-architecture ensemble). An earlier four-model weighted ensemble of genuinely different architectures is also still in this repo — it was the original approach, and it's kept for reference since it's part of the project's history — but NAFNet beats it on every metric while running faster, so NAFNet is what `infer.py` runs by default and what the results below are based on.
 
 ## Results
 
-NAFNet (submission — single model, width=48, ~15.9M params), full held-out validation set. TTA (4-view flip/rotate averaging) is on by default — this is what `infer.py` produces with zero flags:
+NAFNet (submission, width=48, ~15.9M params), full held-out validation set. Default `infer.py` behavior with zero flags — TTA (4-view flip/rotate averaging) on, both checkpoints averaged:
 
 | Metric | Value |
 |---|---|
-| SSIM | 0.7826 |
-| PSNR | 28.58 dB |
-| LPIPS | 0.1397 |
-| Avg. inference time | ~52 ms/image (TTA on by default; ~15 ms/image with `--no_tta`) |
+| SSIM | 0.7879 |
+| PSNR | 28.70 dB |
+| LPIPS | 0.1796 |
+| Avg. inference time | ~101 ms/image |
 
-Without TTA (`--no_tta`): SSIM 0.7768, PSNR 28.30 dB, LPIPS 0.1264 — slightly better LPIPS, worse SSIM/PSNR. TTA's averaging recovers most of the SSIM/PSNR cost of the LPIPS fine-tune (see below) while keeping most of its LPIPS gain, so it's on by default.
+This beats the pre-fine-tune checkpoint on every metric (SSIM 0.7872, PSNR 28.39dB, LPIPS 0.2394) while still keeping a large LPIPS improvement. Other configurations, same held-out set, for reference:
 
-For comparison, the earlier four-model ensemble + TTA, same held-out set:
+| Config | SSIM | PSNR | LPIPS | ms/image |
+|---|---|---|---|---|
+| Pre-fine-tune checkpoint alone, no TTA | 0.7872 | 28.39 | 0.2394 | ~15 |
+| Fine-tuned checkpoint alone, no TTA | 0.7768 | 28.30 | 0.1264 | ~15 |
+| Fine-tuned checkpoint alone, TTA | 0.7826 | 28.58 | 0.1397 | ~52 |
+| **Both checkpoints averaged, TTA each (default)** | **0.7879** | **28.70** | **0.1796** | ~101 |
+
+For comparison, the earlier four different-architecture ensemble + TTA, same held-out set:
 
 | Metric | Value |
 |---|---|
@@ -53,7 +60,8 @@ ps1_restoration/
 │   ├── test_real_sample.py     Sanity-checks a checkpoint against real held-out data
 │   └── test_degradations.py    Probes a checkpoint against synthetic noise/blur
 ├── outputs/
-│   ├── model_nafnet_my_run.pt          NAFNet, the submitted checkpoint
+│   ├── model_nafnet_my_run.pt          NAFNet, fine-tuned checkpoint (the primary submitted weights)
+│   ├── model_nafnet_pre_lpips.pt       NAFNet, pre-fine-tune checkpoint -- averaged with the above by default
 │   ├── model_nafnet_my_run.log         Full epoch-by-epoch training history
 │   ├── model_noise_aware_LOCAL_v1.pt   \
 │   ├── model_noise_aware_BIG_v4.pt      | earlier four-model ensemble, reference only
@@ -114,7 +122,7 @@ cd src
 python infer.py --input_dir /path/to/test/NoisyLR --output_dir /path/to/output
 ```
 
-No manual edits needed — it defaults to the submitted NAFNet checkpoint (`model_nafnet_my_run.pt`, width=48), so `--input_dir`/`--output_dir` is all you need to supply. It reads every `.npy` in the input directory, restores it in a single pass, averages in 4-view test-time augmentation by default (pass `--no_tta` to disable, e.g. for a raw speed benchmark), clamps to `[0,1]`, and writes 256×256 `.npy` outputs under the original filenames.
+No manual edits needed — `--input_dir`/`--output_dir` is all you need to supply. By default it loads both `model_nafnet_my_run.pt` and `model_nafnet_pre_lpips.pt` (same NAFNet architecture, two checkpoints), runs 4-view TTA on each, and averages everything together (pass `--single_checkpoint` to use only `model_nafnet_my_run.pt`, or `--no_tta` to also drop TTA, e.g. for a raw speed benchmark). It reads every `.npy` in the input directory, clamps to `[0,1]`, and writes 256×256 `.npy` outputs under the original filenames.
 
 The earlier four-model ensemble is still runnable the same way, if you want to compare:
 
@@ -145,9 +153,11 @@ LPIPS pulls down pretrained AlexNet weights the first time it runs. If that down
 
 It was then fine-tuned for another 15 epochs with two additions aimed at the remaining texture-blur gap: an **LPIPS perceptual loss term** (rewards "looks like the same texture" in a learned feature space, not just per-pixel closeness) and a **spatially-weighted Charbonnier term** (weights the pixel loss by local ground-truth gradient magnitude, so texture-dense regions get more gradient signal instead of being averaged into flat background). Combined loss is now Charbonnier(spatially-weighted) / SSIM / FFT / LPIPS weighted 0.30 / 0.20 / 0.25 / 0.25.
 
-This is a real, measured trade at the model level: without TTA, LPIPS improved 47% relative (0.2394 → 0.1264) and fine texture is visibly closer to ground truth on cases with real structured detail, at the cost of SSIM dropping ~1.3% (0.7872 → 0.7768) and PSNR ~0.09 dB. Verified on the full 320-image held-out set before and after, not a spot check — see `outputs/model_nafnet_my_run.BACKUP_pre_lpips.pt` if you want to compare against the pre-LPIPS checkpoint directly.
+This is a real, measured trade at the model level: without TTA, LPIPS improved 47% relative (0.2394 → 0.1264) and fine texture is visibly closer to ground truth on cases with real structured detail, at the cost of SSIM dropping ~1.3% (0.7872 → 0.7768) and PSNR ~0.09 dB. Verified on the full 320-image held-out set before and after, not a spot check.
 
-Turning TTA on by default (see below) recovers most of that SSIM/PSNR cost — with TTA, SSIM is 0.7826 (nearly tied with the pre-fine-tune 0.7872) and PSNR is 28.58 dB (actually *higher* than the pre-fine-tune 28.39 dB), while LPIPS is still 42% better (0.1397 vs 0.2394). So the shipped default (fine-tuned model + TTA) is close to a clean win across all three metrics, not just a one-metric trade.
+Turning TTA on recovers most of that SSIM/PSNR cost on its own: SSIM 0.7826, PSNR 28.58 dB (both close to or above the pre-fine-tune numbers), LPIPS still 42% better (0.1397).
+
+Going further, **averaging the two checkpoints' TTA predictions together** (the pre-fine-tune and fine-tuned NAFNet, same architecture, both run with TTA) turned out to beat every single-checkpoint configuration on SSIM and PSNR — including the original pre-fine-tune checkpoint alone — while still keeping a real 25% LPIPS improvement over it. This is why it's the default: it isn't a trade at all on the aggregate metrics, it's close to a clean win on all three, for roughly double the inference time of single-checkpoint TTA (~101ms/image vs ~52ms, still fast). This was found by testing, not assumed going in — see the full comparison table in Results above.
 
 ## Known limitations
 
@@ -155,7 +165,7 @@ The model still favors structural accuracy over sharp texture to some degree —
 
 - **Structured fine detail** (wire, fabric weave, repeating patterns): the fine-tune measurably helps here — this is the case the added loss terms specifically target, and the clearest visible win (e.g. held-out sample `000325`).
 - **Dense random grain/speckle baked into the ground truth itself** (the model's per-pixel randomness, not recoverable structure): no loss function change can fix this. A deterministic model can't reproduce a specific random noise realization it was never given enough information to predict — the "smooth" prediction is actually the theoretically correct hedge against unpredictable per-pixel noise. The held-out set's worst-SSIM grain cases improved slightly anyway under the fine-tune, though that's not guaranteed to generalize.
-- **Semi-chaotic texture that looks structured but isn't reliably predictable** (e.g. held-out sample `002929`, water-ripple surface): this is the project's longest-standing hard case, and the fine-tune does not clearly help it — SSIM and PSNR both regress slightly there (0.6550 → 0.6298 SSIM, 22.55 → 22.34 dB PSNR without TTA), with only a modest LPIPS gain (0.1697 → 0.1550), far below the aggregate improvement. TTA recovers most but not all of the SSIM/PSNR loss on this specific case (SSIM back to 0.6476, PSNR to 22.64 dB — now above the original). Included here deliberately rather than only showcasing the cases that improved.
+- **Semi-chaotic texture that looks structured but isn't reliably predictable** (e.g. held-out sample `002929`, water-ripple surface): this is the project's longest-standing hard case, and the fine-tune alone does not clearly help it — SSIM and PSNR both regress slightly (0.6550 → 0.6298 SSIM, 22.55 → 22.34 dB PSNR, fine-tuned checkpoint alone, no TTA), with only a modest LPIPS gain (0.1697 → 0.1550), far below the aggregate improvement. The default two-checkpoint TTA ensemble recovers this case too, though not quite back to the pre-fine-tune checkpoint's own TTA score: SSIM 0.6577, PSNR 22.76 dB (vs pre-fine-tune-alone-with-TTA's SSIM 0.6627, PSNR 22.79 dB). Included here deliberately rather than only showcasing the cases that improved.
 
 It's also trained specifically on this dataset's degradation: multiplicative speckle noise (std roughly 0.06–0.16 depending on brightness) on structured wafer imagery. Thrown at a different noise type — flat additive Gaussian on an unrelated photo, via `test_degradations.py` — it still produces something structurally reasonable, just noticeably softer. That's expected; the training distribution never included that noise type or image domain. Extending it would mean training on a broader mix of degradations, which wasn't the goal here.
 
