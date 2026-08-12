@@ -67,3 +67,39 @@ Epoch  19/20 | train: 0.0719 | val: 0.0726 | lr: 0.000001
   -> best saved (val=0.0726)
 Epoch  20/20 | train: 0.0719 | val: 0.0726 | lr: 0.000000
   -> best saved (val=0.0726)
+Using device: cuda
+Train pairs: 2880 | Val pairs: 320
+Resume: kept existing held-out split at ../outputs\val_filenames.txt
+Model: nafnet | width=48 | Parameters: 15,855,649
+Augmentation: True
+Resume requested but no train-state file found; warm-started weights from ../outputs/model_nafnet_my_run.pt (optimizer/scheduler restart at epoch 1, measured val=0.1207 — only an improvement on this will overwrite the checkpoint)
+Epoch   1/15 | train: 0.0974 | val: 0.0979 | lr: 0.000100
+  -> best saved (val=0.0979)
+Epoch   2/15 | train: 0.0962 | val: 0.0975 | lr: 0.000100
+  -> best saved (val=0.0975)
+Epoch   3/15 | train: 0.0952 | val: 0.0976 | lr: 0.000099
+Epoch   4/15 | train: 0.0952 | val: 0.0978 | lr: 0.000094
+Epoch   5/15 | train: 0.0945 | val: 0.0962 | lr: 0.000087
+  -> best saved (val=0.0962)
+Epoch   6/15 | train: 0.0940 | val: 0.0969 | lr: 0.000078
+Using device: cuda
+Train pairs: 2880 | Val pairs: 320
+Resume: kept existing held-out split at C:\Users\Mohammed\Desktop\image-restoration--main\src\..\outputs\val_filenames.txt
+Model: nafnet | width=48 | Parameters: 15,855,649
+Augmentation: True
+Resumed full training state from C:\Users\Mohammed\Desktop\image-restoration--main\src\..\outputs\model_nafnet_my_run.trainstate.pt (epoch 7, best_val=0.0962)
+Epoch   7/15 | train: 0.0936 | val: 0.0964 | lr: 0.000068
+Epoch   8/15 | train: 0.0930 | val: 0.0962 | lr: 0.000056
+Epoch   9/15 | train: 0.0923 | val: 0.0957 | lr: 0.000044
+  -> best saved (val=0.0957)
+Epoch  10/15 | train: 0.0919 | val: 0.0953 | lr: 0.000032
+  -> best saved (val=0.0953)
+Epoch  11/15 | train: 0.0913 | val: 0.0954 | lr: 0.000022
+Epoch  12/15 | train: 0.0912 | val: 0.0953 | lr: 0.000013
+  -> best saved (val=0.0953)
+Epoch  13/15 | train: 0.0908 | val: 0.0950 | lr: 0.000006
+  -> best saved (val=0.0950)
+Epoch  14/15 | train: 0.0907 | val: 0.0950 | lr: 0.000001
+  -> best saved (val=0.0950)
+Epoch  15/15 | train: 0.0905 | val: 0.0949 | lr: 0.000000
+  -> best saved (val=0.0949)

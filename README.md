@@ -10,10 +10,10 @@ NAFNet (submission — single model, width=48, ~15.9M params), full held-out val
 
 | Metric | Value |
 |---|---|
-| SSIM | 0.7872 |
-| PSNR | 28.39 dB |
-| LPIPS | 0.2394 |
-| Avg. inference time | ~16 ms/image (~61 ms with TTA) |
+| SSIM | 0.7768 |
+| PSNR | 28.30 dB |
+| LPIPS | 0.1264 |
+| Avg. inference time | ~15 ms/image (~51 ms with TTA) |
 
 For comparison, the earlier four-model ensemble + TTA, same held-out set:
 
@@ -139,13 +139,18 @@ LPIPS pulls down pretrained AlexNet weights the first time it runs. If that down
 
 ## NAFNet: how it got here
 
-`model_nafnet_my_run.pt` trains with a combined Charbonnier + SSIM + FFT loss — weighted 0.4 / 0.25 / 0.35 — with the FFT term pushed up specifically to fight the blur that pixel-wise losses tend to produce on fine, repeating texture. It finished its full 20-epoch schedule and the numbers above are from the complete 320-image held-out set, not a spot check.
+`model_nafnet_my_run.pt` first trained with a combined Charbonnier + SSIM + FFT loss — weighted 0.4 / 0.25 / 0.35 — with the FFT term pushed up specifically to fight the blur that pixel-wise losses tend to produce on fine, repeating texture. That version finished its full 20-epoch schedule and beat the four-model ensemble on every metric while running several times faster, which is what made it the actual submission over the ensemble track.
 
-It started as a side track next to the four-model ensemble, but once it measurably beat the ensemble on every metric while running several times faster, it became the actual submission.
+It was then fine-tuned for another 15 epochs with two additions aimed at the remaining texture-blur gap: an **LPIPS perceptual loss term** (rewards "looks like the same texture" in a learned feature space, not just per-pixel closeness) and a **spatially-weighted Charbonnier term** (weights the pixel loss by local ground-truth gradient magnitude, so texture-dense regions get more gradient signal instead of being averaged into flat background). Combined loss is now Charbonnier(spatially-weighted) / SSIM / FFT / LPIPS weighted 0.30 / 0.20 / 0.25 / 0.25.
+
+This is a real, measured trade: LPIPS improved 47% relative (0.2394 → 0.1264) and fine texture is visibly closer to ground truth on cases with real structured detail, at the cost of SSIM dropping ~1.3% (0.7872 → 0.7768) and PSNR ~0.09 dB. Verified on the full 320-image held-out set before and after, not a spot check — see `outputs/model_nafnet_my_run.BACKUP_pre_lpips.pt` if you want to compare against the pre-LPIPS checkpoint directly.
 
 ## Known limitations
 
-The model favors structural accuracy over sharp texture. On heavily-noised, fine-detail regions (dense speckle, repeating patterns) output tends to look a bit smoother than the ground truth — that's the loss function's bias, not a bug, and it's the main thing the FFT-weighted loss is trying to claw back. The hardest case in the held-out set (dense ripple texture) sits around SSIM 0.65–0.66 for exactly this reason, well below the ~0.79 average.
+The model still favors structural accuracy over sharp texture to some degree — the LPIPS + spatially-weighted fine-tune narrows this gap but doesn't eliminate it. Two genuinely different failure modes showed up during evaluation, worth distinguishing:
+
+- **Structured fine detail** (wire, fabric weave, repeating patterns): the fine-tune measurably helps here — this is the case the added loss terms specifically target.
+- **Dense random grain/speckle baked into the ground truth itself** (the model's per-pixel randomness, not recoverable structure): no loss function change can fix this. A deterministic model can't reproduce a specific random noise realization it was never given enough information to predict — the "smooth" prediction is actually the theoretically correct hedge against unpredictable per-pixel noise. Interestingly, the held-out set's worst SSIM cases (dense grain, not texture) improved slightly anyway under the fine-tune, but that's not guaranteed to generalize.
 
 It's also trained specifically on this dataset's degradation: multiplicative speckle noise (std roughly 0.06–0.16 depending on brightness) on structured wafer imagery. Thrown at a different noise type — flat additive Gaussian on an unrelated photo, via `test_degradations.py` — it still produces something structurally reasonable, just noticeably softer. That's expected; the training distribution never included that noise type or image domain. Extending it would mean training on a broader mix of degradations, which wasn't the goal here.
 
