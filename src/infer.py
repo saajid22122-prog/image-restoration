@@ -41,7 +41,7 @@ def load_model(checkpoint_path, device, model_variant="nafnet", num_res_blocks=8
     return model
 
 
-def run_inference(input_dir, output_dir, checkpoint_path, device=None, model_variant="nafnet", use_tta=False, num_res_blocks=8, base_channels=64, width=32):
+def run_inference(input_dir, output_dir, checkpoint_path, device=None, model_variant="nafnet", use_tta=True, num_res_blocks=8, base_channels=64, width=32):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     if use_tta:
@@ -106,7 +106,10 @@ if __name__ == "__main__":
                         help="Defaults to the final submitted NAFNet checkpoint")
     parser.add_argument("--model_variant", type=str, default="nafnet",
                         choices=["nafnet", "nafnet_v2", "nafnet_large", "baseline", "noise_aware", "unet"])
-    parser.add_argument("--tta", action="store_true")
+    parser.add_argument("--no_tta", action="store_true",
+                        help="Disable test-time augmentation (4-view flip/rotate averaging). "
+                             "TTA is ON by default -- it measurably improves SSIM/PSNR on hard "
+                             "cases for ~3x the inference time (still well under 100ms/image).")
     parser.add_argument("--width", type=int, default=48, help="NAFNet width (must match training)")
     parser.add_argument("--num_res_blocks", type=int, default=8, help="Must match how the checkpoint was trained")
     parser.add_argument("--base_channels", type=int, default=64, help="Must match how the checkpoint was trained")
@@ -114,6 +117,6 @@ if __name__ == "__main__":
 
     run_inference(
         args.input_dir, args.output_dir, args.checkpoint,
-        model_variant=args.model_variant, use_tta=args.tta,
+        model_variant=args.model_variant, use_tta=not args.no_tta,
         width=args.width, num_res_blocks=args.num_res_blocks, base_channels=args.base_channels,
     )
