@@ -1,10 +1,10 @@
 """
 Training script — full-quality run.
 
-Changes vs train.py:
+Changes vs train_legacy_ensemble.py:
   - Bigger NAFNetRestorer config (width=48, more blocks)
   - More epochs, larger batch size
-  - Same loss: Charbonnier + SSIM + FFT frequency-domain
+  - Loss: spatially-weighted Charbonnier + SSIM + FFT frequency-domain + LPIPS
   - AdamW + linear warmup + cosine LR + gradient clipping
   - Data augmentation always on
 """
@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 from pytorch_msssim import ssim
+import lpips
 
 from dataset import RestorationDataset
 from model import (
@@ -25,6 +26,35 @@ from model import (
 
 
 # ── Loss functions ─────────────────────────────────────────────────────────────
+
+_SOBEL_X = torch.tensor([[-1., 0., 1.], [-2., 0., 2.], [-1., 0., 1.]]).view(1, 1, 3, 3)
+_SOBEL_Y = torch.tensor([[-1., -2., -1.], [0., 0., 0.], [1., 2., 1.]]).view(1, 1, 3, 3)
+
+
+def spatial_weight_map(target, base=1.0, alpha=3.0):
+    """
+    Per-pixel loss weight from local GT gradient magnitude, normalized per
+    image to [0,1] then rescaled to [base, base+alpha]. Texture-dense regions
+    (edges, fine repeating detail) get up to alpha+base x the loss weight of
+    flat regions, so the pixel loss can no longer be minimized by averaging
+    ambiguous texture into a flat blur.
+    """
+    kx = _SOBEL_X.to(target.device, target.dtype)
+    ky = _SOBEL_Y.to(target.device, target.dtype)
+    gx = F.conv2d(target, kx, padding=1)
+    gy = F.conv2d(target, ky, padding=1)
+    grad = torch.sqrt(gx * gx + gy * gy + 1e-6)
+
+    b = grad.shape[0]
+    flat_max = grad.view(b, -1).max(dim=1)[0].clamp(min=1e-6).view(b, 1, 1, 1)
+    grad_norm = grad / flat_max
+    return base + alpha * grad_norm
+
+
+def weighted_charbonnier_loss(pred, target, weight, eps=1e-3):
+    diff = torch.sqrt((pred - target).pow(2) + eps * eps)
+    return (diff * weight).mean()
+
 
 def charbonnier_loss(pred, target, eps=1e-3):
     return torch.mean(torch.sqrt((pred - target).pow(2) + eps * eps))
@@ -37,12 +67,39 @@ def frequency_loss(pred, target):
     return F.l1_loss(torch.abs(pred_f), torch.abs(target_f))
 
 
-def combined_loss(pred, target, char_w=0.4, ssim_w=0.25, freq_w=0.35):
+_lpips_model = None
+
+
+def get_lpips_model(device):
+    global _lpips_model
+    if _lpips_model is None:
+        _lpips_model = lpips.LPIPS(net="alex").to(device)
+        _lpips_model.eval()
+        for p in _lpips_model.parameters():
+            p.requires_grad_(False)
+    return _lpips_model
+
+
+def lpips_loss(pred, target, device):
+    """1-channel [0,1] -> 3-channel [-1,1] as LPIPS expects; rewards 'looks
+    like the same texture' in a learned feature space, not just per-pixel
+    closeness — this is what actually pushes back against blur on ambiguous
+    fine detail, which pixel/SSIM/FFT losses have no way to penalize."""
+    model = get_lpips_model(device)
+    def prep(t):
+        return t.repeat(1, 3, 1, 1) * 2 - 1
+    return model(prep(pred), prep(target)).mean()
+
+
+def combined_loss(pred, target, device, char_w=0.30, ssim_w=0.20, freq_w=0.25,
+                   lpips_w=0.25, spatial_alpha=3.0):
     pred_c = torch.clamp(pred, 0, 1)
-    char   = charbonnier_loss(pred_c, target)
+    weight = spatial_weight_map(target, alpha=spatial_alpha)
+    char   = weighted_charbonnier_loss(pred_c, target, weight)
     ssim_l = 1.0 - ssim(pred_c, target, data_range=1.0, size_average=True)
     freq   = frequency_loss(pred_c, target)
-    return char_w * char + ssim_w * ssim_l + freq_w * freq
+    lp     = lpips_loss(pred_c, target, device)
+    return char_w * char + ssim_w * ssim_l + freq_w * freq + lpips_w * lp
 
 
 def deep_supervision_loss(aux_outputs, target, weight=0.1):
@@ -195,7 +252,7 @@ def train(
                 for noisy, gt in val_loader:
                     noisy, gt = noisy.to(device), gt.to(device)
                     pred = model(noisy)
-                    warm_val_loss += combined_loss(pred, gt).item() * noisy.size(0)
+                    warm_val_loss += combined_loss(pred, gt, device).item() * noisy.size(0)
             best_val_loss = warm_val_loss / val_size
             log(f"Resume requested but no train-state file found; warm-started weights "
                 f"from {checkpoint_path} (optimizer/scheduler restart at epoch 1, "
@@ -212,10 +269,10 @@ def train(
             optimizer.zero_grad()
             if use_deep_supervision:
                 pred, aux_outputs = model(noisy, return_aux=True)
-                loss = combined_loss(pred, gt) + deep_supervision_loss(aux_outputs, gt)
+                loss = combined_loss(pred, gt, device) + deep_supervision_loss(aux_outputs, gt)
             else:
                 pred = model(noisy)
-                loss = combined_loss(pred, gt)
+                loss = combined_loss(pred, gt, device)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -233,7 +290,7 @@ def train(
             for noisy, gt in val_loader:
                 noisy, gt = noisy.to(device), gt.to(device)
                 pred = model(noisy)
-                val_loss += combined_loss(pred, gt).item() * noisy.size(0)
+                val_loss += combined_loss(pred, gt, device).item() * noisy.size(0)
         val_loss /= val_size
 
         current_lr = scheduler.get_last_lr()[0]
@@ -260,6 +317,10 @@ def train(
 if __name__ == "__main__":
     import argparse
 
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(SCRIPT_DIR, "..", "data")
+    OUTPUTS_DIR = os.path.join(SCRIPT_DIR, "..", "outputs")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("epochs", type=int, nargs="?", default=100)
     parser.add_argument("variant", nargs="?", default="nafnet")
@@ -281,14 +342,14 @@ if __name__ == "__main__":
     print(f"Checkpoint: {checkpoint_name}")
 
     train(
-        noisy_dir="../data/train/NoisyLR/NoisyLR",
-        gt_dir="../data/train/GT_full/GT",
+        noisy_dir=os.path.join(DATA_DIR, "train", "NoisyLR", "NoisyLR"),
+        gt_dir=os.path.join(DATA_DIR, "train", "GT_full", "GT"),
         epochs=args.epochs,
         batch_size=16,
         lr=args.lr,
         warmup_epochs=args.warmup_epochs,
         model_variant=args.variant,
         width=args.width,
-        checkpoint_path=f"../outputs/{checkpoint_name}",
+        checkpoint_path=os.path.join(OUTPUTS_DIR, checkpoint_name),
         resume=args.resume,
     )

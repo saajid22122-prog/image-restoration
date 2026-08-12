@@ -41,8 +41,8 @@ ps1_restoration/
 ├── src/
 │   ├── dataset.py              Loads matched NoisyLR/GT pairs
 │   ├── model.py                All model architectures, including NAFNetRestorer
-│   ├── train.py                Training script for the earlier ensemble's members
-│   ├── train_big.py            Training script for NAFNet, with resume support
+│   ├── train_big.py            Training script for NAFNet (the submission) — run this to reproduce it from scratch
+│   ├── train_legacy_ensemble.py  Training script for the retired ensemble's members — reference only, NOT the submission
 │   ├── infer.py                Inference script — this is what gets graded. Defaults to NAFNet.
 │   ├── ensemble_infer.py       The earlier four-model ensemble, kept for reference
 │   ├── metrics.py              SSIM / PSNR / LPIPS
@@ -101,7 +101,7 @@ python train_big.py <num_epochs> nafnet <run_name> <width> [--resume] [--lr 1e-3
 
 A few other things during training: GPU is used automatically when available, the train/val split is a fixed-seed 90/10 so it's reproducible, the best checkpoint by validation loss gets saved to `outputs/model_<variant>_<run_name>.pt`, and `train_big.py` also writes a `.log` (survives a crash) and a `.trainstate.pt` (full resumable state, every epoch). Loss is a combination of Charbonnier, SSIM, and an FFT frequency term.
 
-For the earlier ensemble's members: `python train.py <num_epochs> <model_variant> <run_name>`, with `model_variant` one of `baseline` / `noise_aware` / `unet`.
+For the retired ensemble's members (not the submission — reference only): `python train_legacy_ensemble.py <num_epochs> <model_variant> <run_name>`, with `model_variant` one of `baseline` / `noise_aware` / `unet`.
 
 ## Inference
 

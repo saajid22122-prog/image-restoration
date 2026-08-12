@@ -1,5 +1,9 @@
 """
-Training script — quick / iterative runs.
+Training script for the RETIRED four-model ensemble members (baseline /
+noise_aware / unet variants) -- kept for reference only. This is NOT the
+training script for the submitted model. The submission is NAFNet, trained
+by train_big.py; that is the script to run to reproduce the submission
+from scratch.
 
 Loss: Charbonnier (L1-smooth) + SSIM + FFT frequency-domain
   - Charbonnier avoids L1's gradient discontinuity at zero
@@ -152,6 +156,11 @@ def train(
 
 if __name__ == "__main__":
     import sys
+
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(SCRIPT_DIR, "..", "data")
+    OUTPUTS_DIR = os.path.join(SCRIPT_DIR, "..", "outputs")
+
     epochs  = int(sys.argv[1])   if len(sys.argv) > 1 else 30
     variant = sys.argv[2]        if len(sys.argv) > 2 else "nafnet"
     run_name = sys.argv[3]       if len(sys.argv) > 3 else "run"
@@ -161,11 +170,11 @@ if __name__ == "__main__":
     print(f"Checkpoint: {checkpoint_name}")
 
     train(
-        noisy_dir="../data/train/NoisyLR/NoisyLR",
-        gt_dir="../data/train/GT_full/GT",
+        noisy_dir=os.path.join(DATA_DIR, "train", "NoisyLR", "NoisyLR"),
+        gt_dir=os.path.join(DATA_DIR, "train", "GT_full", "GT"),
         epochs=epochs,
         batch_size=16,
         model_variant=variant,
         width=width,
-        checkpoint_path=f"../outputs/{checkpoint_name}",
+        checkpoint_path=os.path.join(OUTPUTS_DIR, checkpoint_name),
     )

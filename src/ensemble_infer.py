@@ -20,6 +20,10 @@ import torch
 
 from model import RestorationNet, NoiseAwareRestorationNet, UNetRestorationNet
 
+# Resolved relative to this file, not the caller's working directory.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUTS_DIR = os.path.join(SCRIPT_DIR, "..", "outputs")
+
 
 def load_one_model(checkpoint_path, device, model_variant, num_res_blocks, base_channels):
     if model_variant == "unet":
@@ -39,10 +43,10 @@ def load_one_model(checkpoint_path, device, model_variant, num_res_blocks, base_
 # edits needed to run this script. "weight" controls how much influence each
 # model has in the final average.
 ENSEMBLE_MEMBERS = [
-    {"checkpoint": "../outputs/model_noise_aware_LOCAL_v1.pt", "variant": "noise_aware", "num_res_blocks": 8, "base_channels": 64, "weight": 1.2},
-    {"checkpoint": "../outputs/model_unet_UNET_v1.pt", "variant": "unet", "num_res_blocks": 8, "base_channels": 48, "weight": 1.0},
-    {"checkpoint": "../outputs/model_noise_aware_BIG_v4.pt", "variant": "noise_aware", "num_res_blocks": 12, "base_channels": 80, "weight": 1.2},
-    {"checkpoint": "../outputs/model_noise_aware_TV_v2.pt", "variant": "noise_aware", "num_res_blocks": 8, "base_channels": 64, "weight": 0.6},
+    {"checkpoint": os.path.join(OUTPUTS_DIR, "model_noise_aware_LOCAL_v1.pt"), "variant": "noise_aware", "num_res_blocks": 8, "base_channels": 64, "weight": 1.2},
+    {"checkpoint": os.path.join(OUTPUTS_DIR, "model_unet_UNET_v1.pt"), "variant": "unet", "num_res_blocks": 8, "base_channels": 48, "weight": 1.0},
+    {"checkpoint": os.path.join(OUTPUTS_DIR, "model_noise_aware_BIG_v4.pt"), "variant": "noise_aware", "num_res_blocks": 12, "base_channels": 80, "weight": 1.2},
+    {"checkpoint": os.path.join(OUTPUTS_DIR, "model_noise_aware_TV_v2.pt"), "variant": "noise_aware", "num_res_blocks": 8, "base_channels": 64, "weight": 0.6},
 ]
 
 

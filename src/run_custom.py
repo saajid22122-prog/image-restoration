@@ -10,7 +10,9 @@ from PIL import Image
 import torch
 from model import NoiseAwareRestorationNet
 
-CHECKPOINT_PATH = "../outputs/model_noise_aware_LOCAL_v1.pt"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUTS_DIR = os.path.join(SCRIPT_DIR, "..", "outputs")
+CHECKPOINT_PATH = os.path.join(OUTPUTS_DIR, "model_noise_aware_LOCAL_v1.pt")
 
 if len(sys.argv) < 2:
     print("Usage: python run_custom_image.py path/to/image.png")
@@ -34,7 +36,9 @@ x = torch.from_numpy(arr).unsqueeze(0).unsqueeze(0).to(device)
 with torch.no_grad():
     pred = torch.clamp(model(x), 0, 1).squeeze(0).squeeze(0).cpu().numpy()
 
-Image.fromarray((arr * 255).astype(np.uint8)).save(f"../outputs/{base_name}_input_128.png")
-Image.fromarray((pred * 255).astype(np.uint8)).save(f"../outputs/{base_name}_output_256.png")
+input_out_path = os.path.join(OUTPUTS_DIR, f"{base_name}_input_128.png")
+output_out_path = os.path.join(OUTPUTS_DIR, f"{base_name}_output_256.png")
+Image.fromarray((arr * 255).astype(np.uint8)).save(input_out_path)
+Image.fromarray((pred * 255).astype(np.uint8)).save(output_out_path)
 
-print(f"Saved outputs/{base_name}_input_128.png and outputs/{base_name}_output_256.png")
+print(f"Saved {input_out_path} and {output_out_path}")

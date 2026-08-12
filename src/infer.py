@@ -15,6 +15,11 @@ from model import (
     NAFNetRestorer, NAFNetRestorerV2,
 )
 
+# Resolved relative to this file, not the caller's working directory --
+# `python infer.py ...` and `python src/infer.py ...` from anywhere both work.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_CHECKPOINT = os.path.join(SCRIPT_DIR, "..", "outputs", "model_nafnet_my_run.pt")
+
 
 def load_model(checkpoint_path, device, model_variant="nafnet", num_res_blocks=8, base_channels=64, width=32):
     if model_variant == "nafnet":
@@ -97,7 +102,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run restoration inference on a directory of test images.")
     parser.add_argument("--input_dir", type=str, required=True)
     parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--checkpoint", type=str, default="../outputs/model_nafnet_my_run.pt",
+    parser.add_argument("--checkpoint", type=str, default=DEFAULT_CHECKPOINT,
                         help="Defaults to the final submitted NAFNet checkpoint")
     parser.add_argument("--model_variant", type=str, default="nafnet",
                         choices=["nafnet", "nafnet_v2", "nafnet_large", "baseline", "noise_aware", "unet"])
