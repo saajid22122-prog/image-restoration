@@ -1,12 +1,10 @@
 """
-Training script — full-quality run.
+Training script for NAFNet, the submission (full-quality run).
 
-Changes vs train_legacy_ensemble.py:
-  - Bigger NAFNetRestorer config (width=48, more blocks)
-  - More epochs, larger batch size
-  - Loss: spatially-weighted Charbonnier + SSIM + FFT frequency-domain + LPIPS
-  - AdamW + linear warmup + cosine LR + gradient clipping
-  - Data augmentation always on
+Config: bigger NAFNetRestorer (width=48, more blocks), more epochs,
+larger batch size, data augmentation always on. Loss: spatially-weighted
+Charbonnier + SSIM + FFT frequency-domain + LPIPS. AdamW + linear
+warmup + cosine LR + gradient clipping.
 """
 
 import os

@@ -2,7 +2,7 @@
 
 Restores degraded semiconductor inspection images: removes speckle noise and upsamples 128×128 → 256×256 in a single pass.
 
-The submission is a single architecture, **NAFNet**, used as an average of two checkpoints of itself (`model_nafnet_my_run.pt` + `model_nafnet_pre_lpips.pt` — one architecture, two training snapshots, not a multi-architecture ensemble). An earlier four-model weighted ensemble of genuinely different architectures is also still in this repo — it was the original approach, and it's kept for reference since it's part of the project's history — but NAFNet beats it on every metric while running faster, so NAFNet is what `infer.py` runs by default and what the results below are based on.
+The submission is a single architecture, **NAFNet**, used as an average of two checkpoints of itself (`model_nafnet_my_run.pt` + `model_nafnet_pre_lpips.pt` — one architecture, two training snapshots, not a multi-architecture ensemble). An earlier four different-architecture weighted ensemble was the original approach; NAFNet beat it on every metric while running faster, so it became the submission and the earlier ensemble's code/checkpoints were removed from the repo (they're still in git history if needed — its final numbers are kept below for context).
 
 ## Results
 
@@ -24,7 +24,7 @@ This beats the pre-fine-tune checkpoint on every metric (SSIM 0.7872, PSNR 28.39
 | Fine-tuned checkpoint alone, TTA | 0.7826 | 28.58 | 0.1397 | ~52 |
 | **Both checkpoints averaged, TTA each (default)** | **0.7879** | **28.70** | **0.1796** | ~101 |
 
-For comparison, the earlier four different-architecture ensemble + TTA, same held-out set:
+For comparison, the earlier four different-architecture ensemble + TTA, same held-out set (code/checkpoints removed from the repo, numbers kept for context):
 
 | Metric | Value |
 |---|---|
@@ -51,9 +51,7 @@ ps1_restoration/
 │   ├── dataset.py              Loads matched NoisyLR/GT pairs
 │   ├── model.py                All model architectures, including NAFNetRestorer
 │   ├── train_big.py            Training script for NAFNet (the submission) — run this to reproduce it from scratch
-│   ├── train_legacy_ensemble.py  Training script for the retired ensemble's members — reference only, NOT the submission
 │   ├── infer.py                Inference script — this is what gets graded. Defaults to NAFNet.
-│   ├── ensemble_infer.py       The earlier four-model ensemble, kept for reference
 │   ├── metrics.py              SSIM / PSNR / LPIPS
 │   ├── prepare_val_holdout.py  Rebuilds the held-out validation split
 │   ├── run_custom.py           Runs a model on any regular image file (jpg/png)
@@ -63,12 +61,8 @@ ps1_restoration/
 │   ├── model_nafnet_my_run.pt          NAFNet, fine-tuned checkpoint (the primary submitted weights)
 │   ├── model_nafnet_pre_lpips.pt       NAFNet, pre-fine-tune checkpoint -- averaged with the above by default
 │   ├── model_nafnet_my_run.log         Full epoch-by-epoch training history
-│   ├── model_noise_aware_LOCAL_v1.pt   \
-│   ├── model_noise_aware_BIG_v4.pt      | earlier four-model ensemble, reference only
-│   ├── model_noise_aware_TV_v2.pt      |
-│   ├── model_unet_UNET_v1.pt           /
 │   ├── final_test_predictions/         NAFNet output on the official test set (400 files)
-│   ├── val_filenames.txt               Held-out split filenames, shared by both tracks
+│   ├── val_filenames.txt               Held-out split filenames
 │   └── degradation_test/               Sample outputs from the two test scripts above
 ├── requirements.txt
 └── README.md
@@ -78,7 +72,7 @@ ps1_restoration/
 
 ## About the data
 
-`data/` isn't in git. Two reasons: the training set is roughly 1.3GB, which is more than a repo should carry, and it isn't needed anyway — the checkpoints under `outputs/` are already trained, so cloning this repo is enough to run inference (`infer.py`, `ensemble_infer.py`, `run_custom.py`). You only need the dataset if you want to retrain from scratch, in which case set it up as described below.
+`data/` isn't in git. Two reasons: the training set is roughly 1.3GB, which is more than a repo should carry, and it isn't needed anyway — the checkpoints under `outputs/` are already trained, so cloning this repo is enough to run inference (`infer.py`, `run_custom.py`). You only need the dataset if you want to retrain from scratch, in which case set it up as described below.
 
 ## Setup
 
@@ -109,9 +103,7 @@ python train_big.py <num_epochs> nafnet <run_name> <width> [--resume] [--lr 1e-3
 - `--resume` continues training under the same `run_name`. If a `.trainstate.pt` exists it picks up the optimizer/scheduler exactly where they left off; otherwise it warm-starts from the best checkpoint and measures a fresh baseline val loss, so a bad run can't silently overwrite a good checkpoint.
 - Lower `--lr` and shorter `--warmup_epochs` (e.g. `1e-4` / `2`) when resuming an already-converged checkpoint — using the from-scratch defaults on converged weights caused a real divergence during development (loss jumped from ~0.085 to ~0.51 around epoch 11). Worth knowing if you resume this run yourself.
 
-A few other things during training: GPU is used automatically when available, the train/val split is a fixed-seed 90/10 so it's reproducible, the best checkpoint by validation loss gets saved to `outputs/model_<variant>_<run_name>.pt`, and `train_big.py` also writes a `.log` (survives a crash) and a `.trainstate.pt` (full resumable state, every epoch). Loss is a combination of Charbonnier, SSIM, and an FFT frequency term.
-
-For the retired ensemble's members (not the submission — reference only): `python train_legacy_ensemble.py <num_epochs> <model_variant> <run_name>`, with `model_variant` one of `baseline` / `noise_aware` / `unet`.
+A few other things during training: GPU is used automatically when available, the train/val split is a fixed-seed 90/10 so it's reproducible, the best checkpoint by validation loss gets saved to `outputs/model_<variant>_<run_name>.pt`, and `train_big.py` also writes a `.log` (survives a crash) and a `.trainstate.pt` (full resumable state, every epoch). Loss is a combination of spatially-weighted Charbonnier, SSIM, an FFT frequency term, and LPIPS (see "NAFNet: how it got here" below).
 
 ## Inference
 
@@ -123,12 +115,6 @@ python infer.py --input_dir /path/to/test/NoisyLR --output_dir /path/to/output
 ```
 
 No manual edits needed — `--input_dir`/`--output_dir` is all you need to supply. By default it loads both `model_nafnet_my_run.pt` and `model_nafnet_pre_lpips.pt` (same NAFNet architecture, two checkpoints), runs 4-view TTA on each, and averages everything together (pass `--single_checkpoint` to use only `model_nafnet_my_run.pt`, or `--no_tta` to also drop TTA, e.g. for a raw speed benchmark). It reads every `.npy` in the input directory, clamps to `[0,1]`, and writes 256×256 `.npy` outputs under the original filenames.
-
-The earlier four-model ensemble is still runnable the same way, if you want to compare:
-
-```bash
-python ensemble_infer.py --input_dir /path/to/test/NoisyLR --output_dir /path/to/output --tta
-```
 
 To try a checkpoint on a regular image file instead of the `.npy` format:
 
@@ -181,8 +167,8 @@ A few things that didn't make the cut, in case it's useful:
 | U-Net architecture (skip connections) | No meaningful improvement |
 | Larger model (4× parameters) with augmentation | No meaningful improvement |
 | Total Variation loss | Worse results, repeatedly |
-| Test-time augmentation | Helped — kept it |
-| Multi-model ensemble | Helped — kept it |
+| Test-time augmentation | Helped — kept it, still used today (see below) |
+| Multi-architecture ensemble (4 different models) | Helped over any single legacy model, but NAFNet alone beat it outright — code/checkpoints removed, see below for what replaced it |
 | Unsharp masking post-processing | Explored as a training-free sharpening step |
 
 The architecture and loss choices weren't arbitrary — they came out of actually looking at the training data's noise characteristics before writing any model code.

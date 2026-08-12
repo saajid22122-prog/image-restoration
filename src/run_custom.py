@@ -8,11 +8,11 @@ import os
 import numpy as np
 from PIL import Image
 import torch
-from model import NoiseAwareRestorationNet
+from model import NAFNetRestorer
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUTS_DIR = os.path.join(SCRIPT_DIR, "..", "outputs")
-CHECKPOINT_PATH = os.path.join(OUTPUTS_DIR, "model_noise_aware_LOCAL_v1.pt")
+CHECKPOINT_PATH = os.path.join(OUTPUTS_DIR, "model_nafnet_my_run.pt")
 
 if len(sys.argv) < 2:
     print("Usage: python run_custom_image.py path/to/image.png")
@@ -27,7 +27,7 @@ img = Image.open(input_path).convert("L")
 img = img.resize((128, 128))
 arr = np.array(img).astype(np.float32) / 255.0
 
-model = NoiseAwareRestorationNet()
+model = NAFNetRestorer(width=48, enc_blks=(2, 2, 4), middle_blks=12, dec_blks=(4, 2, 2))
 model.load_state_dict(torch.load(CHECKPOINT_PATH, map_location=device))
 model.to(device)
 model.eval()
