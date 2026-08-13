@@ -12,7 +12,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, Subset, ConcatDataset
 from pytorch_msssim import ssim
 import lpips
 
@@ -135,6 +135,8 @@ def train(
     warmup_epochs=10,
     use_augmentation=True,
     resume=False,
+    extra_noisy_dir=None,
+    extra_gt_dir=None,
 ):
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -175,6 +177,16 @@ def train(
     train_dataset = RestorationDataset(noisy_dir, gt_dir, augment=use_augmentation)
     train_ds = Subset(train_dataset, train_indices.indices)
     val_ds   = Subset(split_ref,    val_indices.indices)
+
+    # Synthetic pairs (if any) are appended ONLY here, after the real-data
+    # train/val split is already fixed above -- val_ds is built from split_ref
+    # (real data only) and never touches extra_noisy_dir/extra_gt_dir, so the
+    # held-out set stays 100% real regardless of what's added to training.
+    if extra_noisy_dir and extra_gt_dir:
+        extra_dataset = RestorationDataset(extra_noisy_dir, extra_gt_dir, augment=use_augmentation)
+        log(f"Adding {len(extra_dataset)} extra (synthetic) training pairs from {extra_noisy_dir}")
+        train_ds = ConcatDataset([train_ds, extra_dataset])
+        train_size = len(train_ds)
 
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True,
@@ -334,10 +346,17 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_epochs", type=int, default=10,
                          help="Linear LR warmup length. Shorten this (e.g. 2) when resuming, since warm-"
                               "started weights don't need a long ramp-up.")
+    parser.add_argument("--use_synth", action="store_true",
+                         help="Add synthetic pairs from data/train/NoisyLR_synth + GT_synth (see "
+                              "synthesize_data.py) to the training set only -- the held-out validation "
+                              "split is always computed from the real data alone, regardless of this flag.")
     args = parser.parse_args()
 
     checkpoint_name = f"model_{args.variant}_{args.run_name}.pt"
     print(f"Checkpoint: {checkpoint_name}")
+
+    extra_noisy_dir = os.path.join(DATA_DIR, "train", "NoisyLR_synth") if args.use_synth else None
+    extra_gt_dir = os.path.join(DATA_DIR, "train", "GT_synth") if args.use_synth else None
 
     train(
         noisy_dir=os.path.join(DATA_DIR, "train", "NoisyLR", "NoisyLR"),
@@ -350,4 +369,6 @@ if __name__ == "__main__":
         width=args.width,
         checkpoint_path=os.path.join(OUTPUTS_DIR, checkpoint_name),
         resume=args.resume,
+        extra_noisy_dir=extra_noisy_dir,
+        extra_gt_dir=extra_gt_dir,
     )
