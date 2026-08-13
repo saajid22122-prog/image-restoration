@@ -101,7 +101,7 @@ image-restoration/
 pip install -r requirements.txt
 ```
 
-Python 3.10+. A CUDA GPU is strongly recommended for training — CPU training on this dataset is very slow — but inference runs fine on either.
+**Requires Python 3.12** (verified end-to-end on both Windows and a clean Ubuntu Linux environment via CI). Python 3.11 fails during `pip install -r requirements.txt` due to a pinned dependency without a compatible wheel — confirmed by testing, not assumed. A CUDA GPU is strongly recommended for training — CPU training on this dataset is very slow — but inference runs fine on either.
 
 ## Training (reproduce from scratch)
 
