@@ -12,6 +12,17 @@ python infer.py --input_dir /path/to/test/NoisyLR --output_dir /path/to/output
 
 That's the entire setup. No manual edits, no extra flags required — default checkpoints and paths are resolved relative to the script's own location, not the caller's working directory, so this works from any directory on any machine. Reads every `.npy` in the input directory, writes matching 256×256 `.npy` outputs under the original filenames to the output directory.
 
+## Submission requirements checklist
+
+| # | Required | Location |
+|---|---|---|
+| 1 | README with complete setup instructions | This file |
+| 2 | Standalone evaluation `.py` (not a notebook) | `src/infer.py` — `--input_dir` / `--output_dir`, no manual edits |
+| 3 | Training script reproducing the model from scratch | `src/train_big.py` |
+| 4 | Trained model weights, loadable + downloadable | `outputs/model_nafnet_synth_v1.pt` + `outputs/model_nafnet_pre_lpips.pt` (committed directly, no LFS needed) |
+| 5 | Restored test outputs | `outputs/final_test_predictions/` (400 `.npy` files, official test set) |
+| 6 | `requirements.txt` | Repo root |
+
 ## Results
 
 Measured on a fixed, held-out 320-image validation split (never used in training). Default `infer.py` behavior with zero flags — TTA (4-view flip/rotate averaging) on both checkpoints, averaged together:
